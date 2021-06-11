@@ -1,0 +1,73 @@
+parameters:
+  appName: ''
+  azureSubscription: ''
+  environment: ''
+  deploymentEnvironment: ''
+  location: ''
+  locationKey: ''
+
+jobs:
+  - job: getVariables${{parameters.environment}}
+    pool:
+      vmImage: 'Ubuntu-16.04'
+    steps:
+      - download: current
+        artifact: variables
+
+      - bash: |
+          artifactsLocation=$(cat $(Pipeline.Workspace)/variables/artifactsLocation)
+          artifactsLocationSasToken=$(cat $(Pipeline.Workspace)/variables/artifactsLocationSasToken)
+          echo "##vso[task.setvariable variable=artifactsLocation;isOutput=true]$artifactsLocation"
+          echo "##vso[task.setvariable variable=artifactsLocationSasToken;isOutput=true]$artifactsLocationSasToken"
+        name: addToEnvironment
+  #Deploy development environment resources as well as the app running in development
+  - deployment: ${{parameters.environment}}Deployment
+    displayName: ${{parameters.environment}}
+    environment: ${{parameters.deploymentEnvironment}}
+    dependsOn: getVariables${{parameters.environment}}
+    variables:
+      environment: ${{parameters.environment}}
+      appName: ${{parameters.appName}}
+      locationKey: ${{parameters.locationKey}}
+      location: ${{parameters.location}}
+      sharedResourceGroupName: "${{parameters.appName}}-${{parameters.environment}}-shared-rg"
+      artifactsLocation: $[ dependencies.getVariables${{parameters.environment}}.outputs['addToEnvironment.artifactsLocation'] ]
+      artifactsLocationSasToken: $[ dependencies.getVariables${{parameters.environment}}.outputs['addToEnvironment.artifactsLocationSasToken'] ]
+
+
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: Deploy Storage, Cosmos, KV
+              inputs:
+                deploymentScope: Resource Group
+                azureResourceManagerConnection: ${{parameters.azureSubscription}}
+                action: 'Create Or Update Resource Group'
+                resourceGroupName: $(sharedResourceGroupName)
+                location: $(location)
+                templateLocation: 'URL of the file'
+                overrideParameters: -azureEnvironment $(environment)
+                  -appName $(appName)
+                  -locationKey $(locationKey)
+                csmFileLink: '$(artifactsLocation)$(build.buildNumber)/WebApp/azuredeploy-infra.json$(artifactsLocationSasToken)'
+                deploymentMode: Incremental
+
+            - task: AzureResourceManagerTemplateDeployment@3
+              displayName: Deploy dataFactory
+              inputs:
+                deploymentScope: Resource Group
+                azureResourceManagerConnection: ${{parameters.azureSubscription}}
+                action: "Create Or Update Resource Group"
+                resourceGroupName: $(sharedResourceGroupName)
+                location: $(location)
+                overrideParameters: -azureEnvironment $(environment)
+                  -appName $(appName)
+                  -locationKey $(locationKey)
+                templateLocation: "URL of the file"
+                csmFileLink: "$(artifactsLocation)$(build.buildNumber)/WebApp/azuredeploy-factory.json$(artifactsLocationSasToken)"
+                deploymentMode: Incremental
+            
+
+            
