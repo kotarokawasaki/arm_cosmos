@@ -47,7 +47,7 @@ jobs:
                 action: 'Create Or Update Resource Group'
                 resourceGroupName: $(sharedResourceGroupName)
                 location: $(location)
-                templateLocation: 'URL of the file'
+                templateLocation: './azuredeploy-infra.json'
                 overrideParameters: -azureEnvironment $(environment)
                   -appName $(appName)
                   -locationKey $(locationKey)
@@ -65,7 +65,7 @@ jobs:
                 overrideParameters: -azureEnvironment $(environment)
                   -appName $(appName)
                   -locationKey $(locationKey)
-                templateLocation: "URL of the file"
+                templateLocation: "./azuredeploy-infra.json"
                 csmFileLink: "$(artifactsLocation)$(build.buildNumber)/WebApp/azuredeploy-factory.json$(artifactsLocationSasToken)"
                 deploymentMode: Incremental
             
