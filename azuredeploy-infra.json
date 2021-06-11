@@ -1,0 +1,270 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "appName": {
+      "defaultValue": "rads",
+      "type": "string"
+    },
+    "azureEnvironment": {
+      "type": "string"
+    },
+    "locationKey": {
+      "type": "string"
+    },
+    "keyVaultSKUFamily": {
+      "type": "string",
+      "defaultValue": "A"
+    },
+    "keyVaultSKUTier": {
+      "type": "string",
+      "defaultValue": "Standard"
+    }
+  },
+  "variables": {
+    "location": "[resourceGroup().location]",
+    "resourceGroupName": "[concat(parameters('appName'), '-', parameters('azureEnvironment'), '-', parameters('locationKey'), '-rg')]",
+    "storageAccountName": "[concat(parameters('appName'), parameters('azureEnvironment'), 'sharedstorage')]",
+    "cosmosDbName": "[concat(parameters('appName'), '-', parameters('azureEnvironment'), '-shared-cd')]",
+    "keyVaultName": "[concat(parameters('appName'), '-', parameters('azureEnvironment'), '-shared-kv')]",
+    "appServiceName": "[concat(parameters('appName'), '-', parameters('azureEnvironment'),'-',parameters('locationKey'),'-as')]",
+    "cosmosDb": "[concat(parameters('appName'), '-', parameters('azureEnvironment'), '-db')]"
+  },
+  "resources": [
+    {
+			"apiVersion": "2019-06-01",
+			"type": "Microsoft.Storage/storageAccounts",
+			"kind": "StorageV2",
+			"name": "[variables('storageAccountName')]",
+			"location": "[variables('location')]",
+			"sku": {
+				"name": "Standard_RAGRS",
+				"tier": "Standard"
+			},
+			"scale": null,
+			"properties": {
+				"allowBlobPublicAccess": false,
+				"networkAcls": {
+					"bypass": "AzureServices",
+					"virtualNetworkRules": [],
+					"ipRules": [],
+					"defaultAction": "Allow"
+				},
+				"supportsHttpsTrafficOnly": true,
+				"encryption": {
+					"services": {
+						"file": {
+							"enabled": true
+						},
+						"blob": {
+							"enabled": true
+						}
+					},
+					"keySource": "Microsoft.Storage"
+				},
+				"accessTier": "Hot"
+			},
+			"resources": [
+				{
+					"name": "[concat(variables('storageAccountName'), '/default')]",
+					"type": "Microsoft.Storage/storageAccounts/blobServices",
+					"apiVersion": "2019-06-01",
+					"properties": {
+						"deleteRetentionPolicy": {
+							"enabled": true,
+							"days": 15
+						}
+					},
+					"dependsOn": ["[variables('storageAccountName')]"]
+				},
+				{
+					"apiVersion": "2019-06-01",
+					"type": "blobServices/containers",
+					"name": "['default/container-incoming']",
+					"dependsOn": ["[variables('storageAccountName')]"],
+					"properties": {
+						"publicAccess": "None"
+					}
+				},
+				{
+					"apiVersion": "2019-06-01",
+					"type": "blobServices/containers",
+					"name": "['default/container-archive']",
+					"dependsOn": ["[variables('storageAccountName')]"],
+					"properties": {
+						"publicAccess": "None"
+					}
+				},
+				{
+					"apiVersion": "2019-06-01",
+					"type": "blobServices/containers",
+					"name": "['default/container-processing']",
+					"dependsOn": ["[variables('storageAccountName')]"],
+					"properties": {
+						"publicAccess": "None"
+					}
+				},
+				{
+					"name": "default",
+					"type": "managementPolicies",
+					"apiVersion": "2019-04-01",
+					"dependsOn": ["[variables('storageAccountName')]"],
+					"properties": {
+						"policy": {
+							"rules": [
+								{
+									"enabled": true,
+									"name": "TTL-files",
+									"type": "Lifecycle",
+									"definition": {
+										"actions": {
+											"baseBlob": {
+												"delete": {
+													"daysAfterModificationGreaterThan": "14"
+												}
+											},
+											"snapshot": {
+												"delete": {
+													"daysAfterCreationGreaterThan": "14"
+												}
+											}
+										},
+										"filters": {
+											"blobTypes": ["blockBlob"]
+										}
+									}
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+	{
+      "type": "Microsoft.DocumentDB/databaseAccounts",
+      "apiVersion": "2021-04-15",
+      "name": "[variables('cosmosDbName')]",
+      "location": "West Europe",
+      "tags": {
+        "defaultExperience": "Core (SQL)",
+        "hidden-cosmos-mmspecial": "",
+        "applicationService": "",
+        "businessUnit": "BT Experiences For You",
+        "environment": "prod",
+        "fabObject": "10448",
+        "supportedBy": "Anders.Kotsalainen@hm.com"
+      },
+      "kind": "GlobalDocumentDB",
+      "identity": {
+        "type": "None"
+      },
+      "properties": {
+        "publicNetworkAccess": "Enabled",
+        "enableAutomaticFailover": false,
+        "enableMultipleWriteLocations": false,
+        "isVirtualNetworkFilterEnabled": false,
+        "virtualNetworkRules": [],
+        "disableKeyBasedMetadataWriteAccess": false,
+        "enableFreeTier": false,
+        "enableAnalyticalStorage": false,
+        "databaseAccountOfferType": "Standard",
+        "defaultIdentity": "FirstPartyIdentity",
+        "networkAclBypass": "None",
+        "consistencyPolicy": {
+            "defaultConsistencyLevel": "Session",
+            "maxIntervalInSeconds": 5,
+            "maxStalenessPrefix": 100
+          },
+          "locations": [
+              {
+                  "locationName": "West Europe",
+                  "provisioningState": "Succeeded",
+                  "failoverPriority": 0,
+                  "isZoneRedundant": false
+              },
+              {
+                  "locationName": "North Europe",
+                  "provisioningState": "Succeeded",
+                  "failoverPriority": 1,
+                  "isZoneRedundant": false
+              }
+          ],
+          "cors": [],
+          "capabilities": [],
+          "ipRules": [],
+          "backupPolicy": {
+              "type": "Periodic",
+              "periodicModeProperties": {
+                  "backupIntervalInMinutes": 240,
+                  "backupRetentionIntervalInHours": 8
+              }
+          },
+          "networkAclBypassResourceIds": []
+      }
+    },
+    {
+            "type": "Microsoft.DocumentDB/databaseAccounts/notebookWorkspaces",
+            "apiVersion": "2021-04-15",
+            "name": "[concat(variables('cosmosDbName'), '/default')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('cosmosDbName'))]"
+            ]
+    },
+    {
+            "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases",
+            "apiVersion": "2021-04-15",
+            "name": "[concat(variables('cosmosDbName'), '/', variables('cosmosDb'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', variables('cosmosDbName'))]"
+            ],
+            "properties": {
+                "resource": {
+                    "id": "[variables('cosmosDb')]"
+                }
+            }
+    },
+    {
+      "type": "Microsoft.KeyVault/vaults",
+      "apiVersion": "2016-10-01",
+      "name": "[variables('keyvaultName')]",
+      "location": "[variables('location')]",
+      "tags": {
+        "applicationService": "",
+        "businessUnit": "Division Sales Online & Marketing",
+        "environment": "prod",
+        "fabObject": "10448",
+        "supportedBy": ""
+      },
+      "properties": {
+        "sku": {
+          "family": "[parameters('keyVaultSKUFamily')]",
+          "name": "[parameters('keyVaultSKUTier')]"
+        },
+        "tenantId": "[subscription().tenantId]",
+        "accessPolicies": [
+          {
+            "tenantId": "[subscription().tenantId]",
+            "objectId": "[reference(resourceId(variables('resourceGroupName'), 'Microsoft.Web/sites', variables('appServiceName')), '2018-02-01', 'Full').identity.principalId]",
+            "permissions": {
+              "keys": [],
+              "secrets": [ "Get", "List" ]
+            }
+          },
+          {
+            "tenantId": "[subscription().tenantId]",
+            "objectId": "2cc06938-224b-4a90-aa75-3d97dc57a0e4",
+            "permissions": {
+              "keys": [],
+              "secrets": [ "Get", "List", "Set" ]
+            }
+          }
+        ],
+        "enabledForDeployment": true,
+        "enabledForDiskEncryption": true,
+        "enabledForTemplateDeployment": true,
+        "enableSoftDelete": true
+      }
+    }
+    
+  ]
+}
